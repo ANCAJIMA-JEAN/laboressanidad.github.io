@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sistema Sanidad — Control de Avance de Labores</title>
+<style>
+:root{--v:#1f7a3d;--vl:#e6f4ea;--t:#1d2b22;--g:#6b7a70;--b:#dfe6e1;--bg:#f4f7f5;--r:#c0392b;--a:#d99a00}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--t)}
+header{background:var(--v);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+header h1{font-size:18px;margin:0}main{max-width:1000px;margin:auto;padding:16px}
+.btn{border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;background:var(--v);color:#fff;font-size:14px}
+.btn.s{background:#fff;color:var(--v);border:1px solid var(--v)}.btn:disabled{opacity:.5}
+.card{background:#fff;border:1px solid var(--b);border-radius:12px;padding:16px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+h2{font-size:17px;margin:0 0 10px}h3{font-size:15px;margin:18px 0 8px}
+label{display:block;font-size:12px;font-weight:600;color:var(--g);margin:10px 0 3px}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--b);border-radius:8px;font:inherit}
+input[readonly]{background:#eef2ef;color:var(--g)}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.badge{padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700}.ok{background:var(--vl);color:var(--v)}.pr{background:#fff3d6;color:#9a6b00}
+.bar{height:8px;background:var(--b);border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--v)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kv div{background:var(--bg);border-radius:8px;padding:10px}.kv small{display:block;color:var(--g);font-size:11px}.kv b{font-size:17px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:8px;border-bottom:1px solid var(--b);text-align:right}th:first-child,td:first-child,td.l{text-align:left}
+th{background:var(--bg);font-size:11px;color:var(--g)}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%}.g{background:var(--v)}.y{background:var(--a)}.rd{background:var(--r)}
+.map{max-width:100%;max-height:380px;border-radius:8px;border:1px solid var(--b);cursor:zoom-in;display:block}
+#modal{position:fixed;inset:0;background:#000d;display:none;align-items:center;justify-content:center;z-index:9}#modal img{max-width:95%;max-height:95%}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.link{color:var(--v);cursor:pointer;text-decoration:underline;background:none;border:0;font:inherit}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--t);color:#fff;padding:10px 18px;border-radius:8px;display:none;z-index:10}
+.note{font-size:12px;color:var(--g)}
+</style></head><body>
+<header><h1>🌿 SISTEMA SANIDAD — Control de avance de labores</h1><div><button class="btn s" onclick="go('nueva')">＋ Registrar labor</button> <button class="btn s" onclick="go('lista')">📋 Mis labores</button></div></header>
+<main id="app"><p>Cargando…</p></main><div id="modal" onclick="this.style.display='none'"><img id="mimg"></div><div id="toast"></div>
+<script>
+// ====== CONFIGURACIÓN: pega aquí la URL de tu Apps Script (Implementar > Aplicación web) ======
+const API = 'https://script.google.com/macros/s/AKfycbzcX7FIax2GqdikNzU2cju2UVrnc7FRKVdaKYOSzcZz9ch0n4IIFpMXi6VtZUnS-S1n/exec';
+// ==========================================================================================
+let D={config:[],labores:[],registros:[]},sel=null;
+const $=id=>document.getElementById(id), n2=(x,d=2)=>isFinite(x)?(+x).toLocaleString('es-PE',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pd=s=>{const[a,b,c]=s.split('-');return new Date(+a,b-1,+c)}, fd=d=>(typeof d=='string'?pd(d):d).toLocaleDateString('es-PE'), iso=d=>d.toISOString?new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10):d;
+const img=(id,w=1600)=>`https://drive.google.com/thumbnail?id=${id}&sz=w${w}`;
+function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',3500)}
+function big(id){$('mimg').src=img(id);$('modal').style.display='flex'}
+async function load(){try{D=await (await fetch(API)).json()}catch(e){$('app').innerHTML='<div class="card">No se pudo conectar con Google Sheets. Revisa la URL de la API en index.html.</div>';return}
+  go('lista')}
+const cfg=s=>{const c=D.config.find(x=>x.sector==s)||{};return{ha:+c.ha_total||0,std:+c.rend_std_ha_jr||1.5}};
+function grupos(){const m={};D.registros.forEach(r=>{const k=r.labor+'|'+r.sector;(m[k]=m[k]||[]).push(r)});
+  return Object.entries(m).map(([k,rs])=>{rs.sort((a,b)=>a.fecha<b.fecha?-1:1);const[l,s]=k.split('|');return{k,labor:l,sector:s,rs,...tot(rs,s)}})}
+function tot(rs,s){const c=cfg(s),jr=rs.reduce((a,r)=>a+ +r.jornales,0),ha=rs.reduce((a,r)=>a+ +r.ha,0);
+  return{jr,ha,haTot:c.ha,std:c.std,rend:jr?ha/jr:0,dias:new Set(rs.map(r=>r.fecha)).size,completo:ha>=c.ha-0.005&&c.ha>0}}
+function sem(rend,std){const r=rend/std;return r>=1?'g':r>=.8?'y':'rd'}
+function go(v){sel=null;if(v=='lista')lista();else nueva()}
+function lista(){const g=grupos();$('app').innerHTML=`<h2>Mis labores</h2><div class="row" style="margin:0 0 12px"><select id="fl" onchange="lista2()" style="max-width:220px"><option value="">Todas las labores</option>${[...new Set(g.map(x=>x.labor))].map(l=>`<option>${esc(l)}</option>`)}</select></div><div class="grid" id="gr"></div>`;window._g=g;lista2()}
+function lista2(){const f=$('fl').value,g=window._g.filter(x=>!f||x.labor==f);
+  $('gr').innerHTML=g.length?g.map(x=>`<div class="card"><b>${esc(x.labor)}</b> · ${esc(x.sector)} <span class="badge ${x.completo?'ok':'pr'}" style="float:right">${x.completo?'Completo':'En proceso'}</span>
+  <div class="bar"><i style="width:${Math.min(100,x.ha/x.haTot*100||0)}%"></i></div><div class="note">${n2(x.ha)} / ${n2(x.haTot)} ha · ${x.dias} día(s)</div>
+  <div class="row"><button class="btn s" onclick="resumen('${esc(x.k)}')">Ver resumen</button><button class="btn" onclick="cont('${esc(x.k)}')">Continuar avance</button></div></div>`).join(''):'<div class="card">Aún no hay labores. Usa “＋ Registrar labor”.</div>'}
+const calc=p=>`<div class="f2"><div><label>Ha/Jr (automático)</label><input id="${p}hj" readonly></div><div><label>Jr/Ha (automático)</label><input id="${p}jh" readonly></div></div>`;
+function live(p){const j=+$(p+'j').value,h=+$(p+'h').value;$(p+'hj').value=j&&h?n2(h/j):'';$(p+'jh').value=j&&h?n2(j/h):''}
+function nueva(){$('app').innerHTML=`<div class="card"><h2>Registrar nueva labor (primer avance)</h2>
+<div class="f2"><div><label>Actividad / Labor *</label><select id="nl"><option value="">Seleccione…</option>${(D.labores||[]).map(l=>`<option>${esc(l)}</option>`).join('')}</select></div>
+<div><label>Fecha *</label><input type="date" id="nf" value="${iso(new Date())}"></div></div>
+<div class="f2"><div><label>Sector *</label><select id="ns" onchange="$('nh').textContent=n2(cfg(this.value).ha)+' ha · estándar '+n2(cfg(this.value).std)+' ha/jr'"><option value="">Seleccione…</option>${D.config.map(c=>`<option>${esc(c.sector)}</option>`)}</select><div class="note" id="nh"></div></div>
+<div><label>Caldo total utilizado (L)</label><input type="number" step="any" id="nc"></div></div>
+<div class="f2"><div><label>Jornales usados *</label><input type="number" step="any" id="nj" oninput="live('n')"></div><div><label>Hectáreas ejecutadas *</label><input type="number" step="any" id="nh2" oninput="live('n')"></div></div>${calc('n')}
+<label>Mapa de ejecución (imagen) *</label><input type="file" accept="image/*" id="nm"><label>Observaciones</label><textarea id="no" rows="3"></textarea>
+<div class="row"><button class="btn s" onclick="go('lista')">Cancelar</button><button class="btn" id="bg" onclick="guardar('n')">Guardar labor</button></div></div>`;
+  window._f={j:'nj',h:'nh2'}}
+function cont(k){const[l,s]=k.split('|');sel=k;$('app').innerHTML=`<div class="card"><h2>Continuar avance</h2><p><b>${esc(l)}</b> · ${esc(s)}</p>
+<label>Fecha *</label><input type="date" id="cf" value="${iso(new Date())}"><div class="f2"><div><label>Jornales usados *</label><input type="number" step="any" id="cj" oninput="live('c')"></div><div><label>Hectáreas ejecutadas *</label><input type="number" step="any" id="ch" oninput="live('c')"></div></div>${calc('c')}
+<label>Mapa de ejecución *</label><input type="file" accept="image/*" id="cm"><label>Observaciones</label><textarea id="co" rows="3"></textarea>
+<div class="row"><button class="btn s" onclick="go('lista')">Cancelar</button><button class="btn" id="bg" onclick="guardar('c')">Guardar avance</button></div></div>`}
+function comprimir(file){return new Promise((ok,ko)=>{const r=new FileReader();r.onerror=ko;r.onload=()=>{const i=new Image();i.onerror=ko;i.onload=()=>{const m=1400,s=Math.min(1,m/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.8))};i.src=r.result};r.readAsDataURL(file)})}
+async function guardar(p){let labor,sector;if(p=='n'){labor=$('nl').value.trim();sector=$('ns').value}else[labor,sector]=sel.split('|');
+  const fecha=$(p+'f').value,jornales=$(p=='n'?'nj':'cj').value,ha=$(p=='n'?'nh2':'ch').value,file=$(p+'m').files[0];
+  if(!labor||!sector||!fecha||!(+jornales>0)||!(+ha>0)||!file)return toast('Completa los campos obligatorios (*) y sube el mapa');
+  if(p=='n'&&D.registros.some(r=>r.labor==labor&&r.sector==sector))return toast('Esa labor/sector ya existe: usa “Continuar avance”');
+  if(D.registros.some(r=>r.labor==labor&&r.sector==sector&&r.fecha==fecha)&&!confirm('Ya hay un registro en esa fecha. ¿Guardar de todos modos?'))return;
+  $('bg').disabled=true;$('bg').textContent='Guardando…';
+  try{const imagen=await comprimir(file);
+    const res=await (await fetch(API,{method:'POST',body:JSON.stringify({labor,sector,fecha,jornales,ha,caldo:p=='n'?$('nc').value:'',observacion:$(p+'o').value,imagen})})).json();
+    if(!res.ok)throw res.error;D=await (await fetch(API)).json();toast('✅ Guardado');resumen(labor+'|'+sector)}
+  catch(e){toast('Error al guardar: '+e);$('bg').disabled=false;$('bg').textContent='Reintentar'}}
+function proximo(f){const d=pd(f);d.setDate(d.getDate()+28);if(d.getDay()==6)d.setDate(d.getDate()+2);if(d.getDay()==0)d.setDate(d.getDate()+1);return d}
+function resumen(k){const x=grupos().find(g=>g.k==k);if(!x)return lista();const p=x.rs[0],u=x.rs[x.rs.length-1],falta=Math.max(0,x.haTot-x.ha),jrF=x.rend?falta/x.rend:NaN;
+  $('app').innerHTML=`<div class="card"><div class="row" style="margin:0 0 10px"><button class="btn s" onclick="go('lista')">← Volver</button><button class="btn" onclick="cont('${esc(k)}')">Continuar avance</button></div>
+  <h2>${esc(x.labor)} · ${esc(x.sector)} <span class="badge ${x.completo?'ok':'pr'}">${x.completo?'Completo':'En proceso'}</span></h2>
+  <div class="kv"><div><small>Fecha de inicio (1ª ejecución)</small><b>${fd(p.fecha)}</b></div><div><small>Último registro subido</small><b>${fd(u.fecha)}</b></div><div><small>Próximo ingreso tentativo</small><b>${fd(proximo(p.fecha))}</b></div><div><small>Caldo 1er registro</small><b>${p.caldo?n2(p.caldo,0)+' L':'—'}</b></div></div>
+  ${p.observacion?`<p class="note">Obs. 1er registro: ${esc(p.observacion)}</p>`:''}
+  <h3>Último mapa subido (${fd(u.fecha)})</h3>${u.mapaId?`<img class="map" src="${img(u.mapaId,1000)}" onclick="big('${u.mapaId}')">`:'<p class="note">Sin imagen</p>'}
+  <h3>Detalle de avance por fecha</h3><div style="overflow:auto"><table><tr><th>Fecha</th><th>Jornales</th><th>Ha ejec.</th><th>Ha/Jr</th><th>Jr/Ha</th><th>Rend.</th><th>Mapa</th></tr>
+  ${x.rs.map(r=>{const rd=r.ha/r.jornales;return`<tr><td>${fd(r.fecha)}${r.observacion?`<div class="note">${esc(r.observacion)}</div>`:''}</td><td>${n2(r.jornales)}</td><td>${n2(r.ha)}</td><td>${n2(rd)}</td><td>${n2(r.jornales/r.ha)}</td><td><span class="dot ${sem(rd,x.std)}"></span></td><td>${r.mapaId?`<button class="link" onclick="big('${r.mapaId}')">Ver mapa</button>`:'—'}</td></tr>`}).join('')}</table></div>
+  <p class="note">Semáforo vs. estándar ${n2(x.std)} ha/jr: 🟢 ≥100% · 🟡 80–99% · 🔴 &lt;80%</p>
+  <h3>Resumen general</h3><div class="kv"><div><small>Jornales totales</small><b>${n2(x.jr)}</b></div><div><small>Ha ejecutadas</small><b>${n2(x.ha)} / ${n2(x.haTot)}</b></div><div><small>Rend. promedio Ha/Jr</small><b>${n2(x.rend)}</b></div><div><small>Rend. promedio Jr/Ha</small><b>${n2(x.rend?1/x.rend:NaN)}</b></div><div><small>Días ejecutando</small><b>${x.dias}</b></div></div>
+  <h3>Para cerrar el sector</h3><div class="kv"><div><small>Ha por ejecutar</small><b>${n2(falta)}</b></div><div><small>Jornales faltantes (al rendimiento actual)</small><b>${x.completo?'0,00':n2(jrF)}</b></div></div></div>`;scrollTo(0,0)}
+load();
+</script></body></html>
